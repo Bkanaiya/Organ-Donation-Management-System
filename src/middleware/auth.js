@@ -1,5 +1,6 @@
 const { verifyToken } = require('../utils/auth');
 const AppError = require('../utils/AppError');
+const User = require('../models/user.model');
 
 // Reads "Authorization: Bearer <token>", verifies it, and attaches the
 // decoded payload ({ id, Role, LinkedDonor, LinkedReceiver }) to req.user
@@ -57,4 +58,32 @@ function authorizeSelfOrRoles(linkedField, paramName, ...privilegedRoles) {
     };
 }
 
-module.exports = { authenticate, authorize, authorizeSelfOrRoles };
+// Hospital-scope enforcement. Run AFTER `authorize('admin', 'hospital')` so
+// admins short-circuit before the DB read and so unauthorized callers have
+// already been rejected. We intentionally do NOT trust `req.user.Hospital`
+// from the JWT — the User record is re-fetched so a reassigned user cannot
+// keep operating against their old hospital until the token expires.
+async function scopeToHospital(req, res, next) {
+    if (!req.user) {
+        return next(new AppError('authentication required', 401));
+    }
+
+    if (req.user.Role === 'admin') {
+        return next();
+    }
+
+    const user = await User.findById(req.user.id).select('Role Hospital');
+    if (!user) {
+        return next(new AppError('authentication required', 401));
+    }
+
+    if (!user.Hospital) {
+        return next(new AppError('hospital scope not configured for this account', 403));
+    }
+
+    // Overwrite whatever the token carried with the live, authoritative value.
+    req.user.Hospital = String(user.Hospital);
+    next();
+}
+
+module.exports = { authenticate, authorize, authorizeSelfOrRoles, scopeToHospital };

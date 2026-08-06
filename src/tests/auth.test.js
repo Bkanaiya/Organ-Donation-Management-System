@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../app');
 const { connectTestDB, closeTestDB, clearTestDB } = require('./setup');
+const { createAdminAndToken } = require('./helpers');
 
 describe('Auth routes', () => {
 
@@ -23,8 +24,7 @@ describe('Auth routes', () => {
             .send({
                 Name: 'Admin User',
                 Email: 'admin@test.com',
-                Password: 'password123',
-                Role: 'admin'
+                Password: 'password123'
             });
 
         expect(response.status).toBe(201);
@@ -32,6 +32,22 @@ describe('Auth routes', () => {
         expect(response.body.user.Email).toBe('admin@test.com');
         // The password hash should never come back in the response.
         expect(response.body.user).not.toHaveProperty('Password');
+        // Role is server-assigned — callers cannot self-register as admin.
+        expect(response.body.user.Role).toBe('donor');
+    });
+
+    it('strips a caller-supplied Role of admin/hospital and forces donor', async () => {
+        const response = await request(app)
+            .post('/api/auth/register')
+            .send({
+                Name: 'Sneaky',
+                Email: 'sneaky@test.com',
+                Password: 'password123',
+                Role: 'admin'
+            });
+
+        expect(response.status).toBe(201);
+        expect(response.body.user.Role).toBe('donor');
     });
 
     it('rejects registration with a missing required field', async () => {
@@ -46,12 +62,12 @@ describe('Auth routes', () => {
         // Register once...
         await request(app)
             .post('/api/auth/register')
-            .send({ Name: 'First', Email: 'dupe@test.com', Password: 'password123', Role: 'admin' });
+            .send({ Name: 'First', Email: 'dupe@test.com', Password: 'password123' });
 
         // ...then try to register the same email again.
         const response = await request(app)
             .post('/api/auth/register')
-            .send({ Name: 'Second', Email: 'dupe@test.com', Password: 'password123', Role: 'admin' });
+            .send({ Name: 'Second', Email: 'dupe@test.com', Password: 'password123' });
 
         expect(response.status).toBe(409);
     });
@@ -60,7 +76,7 @@ describe('Auth routes', () => {
     it('logs in with correct credentials', async () => {
         await request(app)
             .post('/api/auth/register')
-            .send({ Name: 'Admin', Email: 'login@test.com', Password: 'password123', Role: 'admin' });
+            .send({ Name: 'Admin', Email: 'login@test.com', Password: 'password123' });
 
         const response = await request(app)
             .post('/api/auth/login')
@@ -73,7 +89,7 @@ describe('Auth routes', () => {
     it('rejects login with the wrong password', async () => {
         await request(app)
             .post('/api/auth/register')
-            .send({ Name: 'Admin', Email: 'wrongpass@test.com', Password: 'password123', Role: 'admin' });
+            .send({ Name: 'Admin', Email: 'wrongpass@test.com', Password: 'password123' });
 
         const response = await request(app)
             .post('/api/auth/login')
@@ -117,7 +133,6 @@ describe('Auth routes', () => {
                 Name: 'Fake Ravi',
                 Email: 'attacker@test.com',
                 Password: 'password123',
-                Role: 'donor',
                 DonorId: donorId
             });
         expect(mismatchResponse.status).toBe(403);
@@ -129,10 +144,10 @@ describe('Auth routes', () => {
                 Name: 'Ravi Kumar',
                 Email: 'ravi@test.com',
                 Password: 'password123',
-                Role: 'donor',
                 DonorId: donorId
             });
         expect(matchResponse.status).toBe(201);
         expect(matchResponse.body.user.LinkedDonor).toBe(donorId);
+        expect(matchResponse.body.user.Role).toBe('donor');
     });
 });

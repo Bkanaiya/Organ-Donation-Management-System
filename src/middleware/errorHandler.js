@@ -1,4 +1,5 @@
 const AppError = require('../utils/AppError');
+const logger = require('../utils/logger');
 
 // Mongoose validation error (schema rule failed, e.g. missing required field,
 // bad enum value, min/max violation). Collect every field's message, not just
@@ -44,9 +45,15 @@ function errorHandler(error, req, res, next) {
     const statusCode = err.isOperational ? err.statusCode : 500;
     const message = err.isOperational ? err.message : 'something went wrong on our end';
 
-    // Full detail in the server log either way — only the client response is sanitized.
-    if (!err.isOperational) {
-        console.error('UNEXPECTED ERROR:', error);
+    // Log through the structured logger. Use req.log if pino-http attached it
+    // (so the line carries req.id); fall back to the module-level logger.
+    // Operational errors are routine 4xx — log them at warn. Anything else is
+    // a programmer-error or runtime fault — log at error with full stack.
+    const log = (req && req.log) || logger;
+    if (err.isOperational) {
+        log.warn({ err: { message: err.message, statusCode } }, 'request failed');
+    } else {
+        log.error({ err }, 'unexpected error');
     }
 
     res.status(statusCode).json({ message });

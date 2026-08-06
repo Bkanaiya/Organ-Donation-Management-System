@@ -74,7 +74,7 @@ describe('Receiver routes', () => {
         // Register a plain donor-role account — should NOT be allowed to patch a receiver.
         const donorAccount = await request(app)
             .post('/api/auth/register')
-            .send({ Name: 'Some Donor', Email: 'donor-role@test.com', Password: 'password123', Role: 'donor' });
+            .send({ Name: 'Some Donor', Email: 'donor-role@test.com', Password: 'password123' });
 
         const response = await request(app)
             .patch(`/api/receiver/${receiver._id}`)

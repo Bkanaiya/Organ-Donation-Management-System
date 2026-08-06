@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../app');
 const { connectTestDB, closeTestDB, clearTestDB } = require('./setup');
+const { createAdminAndToken } = require('./helpers');
 
 // `describe` groups related tests together — think of it as a folder/heading.
 // `beforeAll` runs once before any test in this file. `afterEach` runs after
@@ -84,19 +85,9 @@ describe('Donor routes', () => {
 
     // --- Test 5: an admin CAN see the donor list ---
     it('allows GET /api/donor for a logged-in admin', async () => {
-        // First register an admin account to get a token — this mirrors
-        // exactly what you'd do by hand in Postman: register, then use
-        // the returned token on the next request.
-        const registerResponse = await request(app)
-            .post('/api/auth/register')
-            .send({
-                Name: 'Admin User',
-                Email: 'admin@test.com',
-                Password: 'password123',
-                Role: 'admin'
-            });
-
-        const token = registerResponse.body.token;
+        // Admin accounts are no longer reachable through the public
+        // register endpoint — bootstrap via the test helper instead.
+        const token = await createAdminAndToken();
 
         const response = await request(app)
             .get('/api/donor')

@@ -75,11 +75,37 @@ const receiverSchema = new mongoose.Schema({
         type: String,
         enum: ['pending', 'verified', 'waiting', 'matched', 'transplanted', 'rejected'],
         default: 'pending'
-    }
+    },
+    // HLA + sensitization data — drives kidney/marrow allocation. Optional
+    // until the receiver is screened by the transplant coordinator.
+    HLA_Typing: {
+        A: { type: [String], default: undefined },
+        B: { type: [String], default: undefined },
+        DR: { type: [String], default: undefined }
+    },
+    cPRA: {
+        type: Number,
+        min: [0, 'cPRA cannot be negative'],
+        max: [100, 'cPRA cannot exceed 100']
+    },
+    SensitizationEvents: Number,
+    BloodAntibodyScreen: {
+        latestPRA: Number,
+        testedAt: Date
+    },
+    AcceptsExtendedCriteria: { type: Boolean, default: false },
+    AcceptsPediatricOrgan: { type: Boolean, default: false },
+    MinOrganWeight_grams: Number,
+    MaxOrganWeight_grams: Number,
+    DialysisDuration_months: Number
 }, { timestamps: true });
 
 // Common lookup pattern for matching: find waiting receivers by organ + blood group + location,
 // ordered by urgency.
 receiverSchema.index({ Organ_needed: 1, BloodGroup: 1, State: 1, District: 1 });
+
+// Eligibility query filter — only used by the matcher to narrow the waitlist
+// before per-organ eligibility is applied.
+receiverSchema.index({ Organ_needed: 1, Status: 1, IsVerified: 1 });
 
 module.exports = mongoose.model('Receiver', receiverSchema);

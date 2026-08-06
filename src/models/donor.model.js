@@ -12,6 +12,43 @@ const donatedOrganSchema = new mongoose.Schema({
         type: String,
         enum: ['available', 'matched', 'donated', 'unavailable'],
         default: 'available'
+    },
+    // HLA typing is organ-specific (kidney/marrow). Optional — populated when
+    // the donor is screened by the transplant coordinator.
+    HLA_Typing: {
+        A: { type: [String], default: undefined },
+        B: { type: [String], default: undefined },
+        DR: { type: [String], default: undefined }
+    },
+    cPRA: {
+        type: Number,
+        min: [0, 'cPRA cannot be negative'],
+        max: [100, 'cPRA cannot exceed 100']
+    },
+    CrossmatchResult: {
+        type: String,
+        enum: ['negative', 'positive', 'not_done'],
+        default: 'not_done'
+    },
+    OrganWeight_grams: Number,
+    OrganQuality: {
+        type: String,
+        enum: ['ideal', 'extended_criteria', 'marginal'],
+        default: 'ideal'
+    },
+    ColdIschemiaLimit_min: Number,
+    IschemiaStartedAt: Date,
+    IsPediatric: { type: Boolean, default: false },
+    // Serology panel — each marker must be present and explicitly false
+    // before the organ is allowed to match. Absent fields count as
+    // "not screened" rather than "negative" — fail closed.
+    InfectionScreening: {
+        HIV: { type: Boolean, default: undefined },
+        HepB: { type: Boolean, default: undefined },
+        HepC: { type: Boolean, default: undefined },
+        CMV: { type: Boolean, default: undefined },
+        EBV: { type: Boolean, default: undefined },
+        Syphilis: { type: Boolean, default: undefined }
     }
 }, { _id: false });
 
@@ -95,10 +132,24 @@ const donorSchema = new mongoose.Schema({
         type: String,
         enum: ['pending', 'verified', 'available', 'matched', 'donated', 'rejected'],
         default: 'pending'
+    },
+    MedicalHistory: {
+        Hypertension: Boolean,
+        Diabetes: Boolean,
+        Malignancy: Boolean,
+        MalignancyFreeYears: Number
     }
 }, { timestamps: true });
 
 // Common lookup pattern for matching: find available donors by organ + blood group + location.
 donorSchema.index({ 'OrgansDonated.Organ': 1, BloodGroup: 1, State: 1, District: 1 });
+
+// Eligibility query filter: look up donors that have been verified + consented
+// AND are still in an active allocation state. Partial-filter index keeps it
+// small — the docs we filter out don't take up index space.
+donorSchema.index(
+    { IsVerified: 1, ConsentGiven: 1, Status: 1 },
+    { partialFilterExpression: { Status: { $in: ['available', 'verified'] } } }
+);
 
 module.exports = mongoose.model('Donor', donorSchema);

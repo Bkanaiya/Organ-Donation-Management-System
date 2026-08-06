@@ -6,25 +6,40 @@
 // The first time this runs on your machine, it downloads a small MongoDB
 // binary (one-time, then cached) — so you'll need internet access for that
 // first run.
+//
+// We spin up a single-node replica set so that MongoDB transactions work
+// (transactions require a replica set or a sharded cluster; standalone
+// servers reject them). src/services/match.service.js uses session.withTransaction
+// for atomic createMatch.
 
 require('dotenv').config();
 const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+const { MongoMemoryReplSet } = require('mongodb-memory-server');
 
-let mongoServer;
+let replSet;
 
 // Call this once before all tests in a file (in a `beforeAll` block).
 async function connectTestDB() {
-    mongoServer = await MongoMemoryServer.create();
-    const uri = mongoServer.getUri();
+    replSet = await MongoMemoryReplSet.create({
+        replSet: { count: 1, storageEngine: 'wiredTiger' }
+    });
+    const uri = replSet.getUri();
     await mongoose.connect(uri);
+
+    // Sanity-check the replica set is actually running. Without this the
+    // first createMatch call would fail with "Transaction numbers are only
+    // allowed on a replica set member or mongos" deep inside the driver.
+    const status = await mongoose.connection.db.admin().command({ replSetGetStatus: 1 });
+    if (!status || !status.set) {
+        throw new Error('mongodb-memory-server is not running as a replica set; transactions will fail');
+    }
 }
 
 // Call this once after all tests in a file (in an `afterAll` block).
 async function closeTestDB() {
     await mongoose.connection.dropDatabase();
     await mongoose.connection.close();
-    await mongoServer.stop();
+    await replSet.stop();
 }
 
 // Call this between tests (in an `afterEach` block) so one test's data
