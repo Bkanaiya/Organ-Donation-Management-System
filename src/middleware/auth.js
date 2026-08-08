@@ -86,4 +86,27 @@ async function scopeToHospital(req, res, next) {
     next();
 }
 
-module.exports = { authenticate, authorize, authorizeSelfOrRoles, scopeToHospital };
+// Same live-Hospital resolution as `scopeToHospital`, but for routes that
+// admins, hospital users, AND self-registered donors/receivers can all reach
+// (e.g. POST /api/donor). Admins and donor/receiver users pass through
+// untouched; hospital users get their authoritative Hospital pinned so the
+// service can force Hospital from the caller's scope instead of the body.
+async function scopeHospitalIfHospitalRole(req, res, next) {
+    if (!req.user) {
+        return next(new AppError('authentication required', 401));
+    }
+    if (req.user.Role !== 'hospital') {
+        return next();
+    }
+    const user = await User.findById(req.user.id).select('Role Hospital');
+    if (!user) {
+        return next(new AppError('authentication required', 401));
+    }
+    if (!user.Hospital) {
+        return next(new AppError('hospital scope not configured for this account', 403));
+    }
+    req.user.Hospital = String(user.Hospital);
+    next();
+}
+
+module.exports = { authenticate, authorize, authorizeSelfOrRoles, scopeToHospital, scopeHospitalIfHospitalRole };

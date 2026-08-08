@@ -69,7 +69,12 @@ const receiverSchema = new mongoose.Schema({
     },
     WaitlistDate: {
         type: Date,
-        default: Date.now
+        // Stamped server-side at waitlist entry (Status 'waiting'), NOT at
+        // registration — see receiver.service.js. A pending/verified receiver
+        // has no entry date, so their waiting-time factor is 0 until they
+        // actually join the list. Leaving it null (vs stamping at creation)
+        // is what keeps this an honest measure of waitlist seniority.
+        default: null
     },
     Status: {
         type: String,
@@ -87,6 +92,37 @@ const receiverSchema = new mongoose.Schema({
         type: Number,
         min: [0, 'cPRA cannot be negative'],
         max: [100, 'cPRA cannot exceed 100']
+    },
+    // HLA antigens the receiver is sensitized against (donor-specific
+    // antibodies). A donor carrying any of these is incompatible regardless
+    // of cPRA number — this is what the antibody screen actually checks.
+    UnacceptableAntigens: {
+        type: [String],
+        default: undefined
+    },
+    // Model for End-stage Liver Disease (6..40). Used by the liver policy as
+    // the medical-urgency driver instead of the coarse Urgency enum.
+    MELD_score: {
+        type: Number,
+        min: [6, 'MELD cannot be below 6'],
+        max: [40, 'MELD cannot exceed 40']
+    },
+    // Exception points awarded by the transplant board on top of MELD_score
+    // (e.g. hepatorenal syndrome, HCC within criteria). Effective MELD =
+    // MELD_score + MELD_ExceptionPoints, capped at 40 by the scoring curve.
+    MELD_ExceptionPoints: {
+        type: Number,
+        min: [0, 'exception points cannot be negative'],
+        max: [34, 'exception points cannot exceed 34'],
+        default: 0
+    },
+    // UNOS-style heart allocation status tier (1 most urgent .. 6 elective).
+    // Drives the heart policy's urgency factor via priorityOverride; the
+    // coarse Urgency enum is ignored for hearts.
+    HeartStatus: {
+        type: Number,
+        min: [1, 'heart status starts at 1 (most urgent)'],
+        max: [6, 'heart status ends at 6 (least urgent)']
     },
     SensitizationEvents: Number,
     BloodAntibodyScreen: {

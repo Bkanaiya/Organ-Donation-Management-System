@@ -10,7 +10,7 @@ const donatedOrganSchema = new mongoose.Schema({
     },
     Status: {
         type: String,
-        enum: ['available', 'matched', 'donated', 'unavailable'],
+        enum: ['available', 'verified', 'matched', 'donated', 'unavailable'],
         default: 'available'
     },
     // HLA typing is organ-specific (kidney/marrow). Optional — populated when
@@ -20,16 +20,17 @@ const donatedOrganSchema = new mongoose.Schema({
         B: { type: [String], default: undefined },
         DR: { type: [String], default: undefined }
     },
-    cPRA: {
-        type: Number,
-        min: [0, 'cPRA cannot be negative'],
-        max: [100, 'cPRA cannot exceed 100']
-    },
-    CrossmatchResult: {
-        type: String,
-        enum: ['negative', 'positive', 'not_done'],
-        default: 'not_done'
-    },
+// Crossmatch is donor-recipient-PAIR-specific and is NOT stored here — a
+// result for one receiver must never clear the organ for another. Pair
+// results live in the Crossmatch model (see models/crossmatch.model.js).
+// cPRA is likewise a receiver-side sensitization measure and has no
+// meaningful donor equivalent, so it is not recorded on the donor either.
+// The subdoc keeps its auto-generated _id (NOT _id:false) so allocation
+// lifecycle updates (reserve/release/complete) can target ONE specific
+// entry by id — a donor may list the same organ twice (e.g. two kidneys),
+// and the positional $ operator keyed on the organ name alone would hit the
+// wrong row. The Match row captures the reserved entry's _id in
+// OrganEntryId and every lifecycle write filters on it.
     OrganWeight_grams: Number,
     OrganQuality: {
         type: String,
@@ -50,7 +51,7 @@ const donatedOrganSchema = new mongoose.Schema({
         EBV: { type: Boolean, default: undefined },
         Syphilis: { type: Boolean, default: undefined }
     }
-}, { _id: false });
+});
 
 const donorSchema = new mongoose.Schema({
     Name: {

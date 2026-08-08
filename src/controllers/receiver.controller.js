@@ -21,7 +21,12 @@ async function getReceiverById(req, res) {
 }
 
 async function updateReceiver(req, res) {
-    const receiver = await receiverService.updateReceiver(req.params.id, req.body);
+    const user = {
+        id: req.user.id || req.user._id,
+        Role: req.user.Role,
+        Hospital: req.user.Hospital
+    };
+    const receiver = await receiverService.updateReceiver(req.params.id, req.body, user, req);
     res.status(200).json({ message: 'receiver updated successfully', receiver });
 }
 

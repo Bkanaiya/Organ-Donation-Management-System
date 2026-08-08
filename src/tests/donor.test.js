@@ -1,7 +1,8 @@
 const request = require('supertest');
 const app = require('../app');
+const AuditLog = require('../models/auditLog.model');
 const { connectTestDB, closeTestDB, clearTestDB } = require('./setup');
-const { createAdminAndToken } = require('./helpers');
+const { createAdminAndToken, createHospital, createDonor, createHospitalUser } = require('./helpers');
 
 // `describe` groups related tests together — think of it as a folder/heading.
 // `beforeAll` runs once before any test in this file. `afterEach` runs after
@@ -95,5 +96,68 @@ describe('Donor routes', () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('donors');
+    });
+
+    // --- Test 6: PATCH /api/donor/:id — whitelist + audit --------------------
+    it('allows an admin to update whitelisted donor fields and audits it', async () => {
+        const adminToken = await createAdminAndToken();
+        const hospital = await createHospital(adminToken);
+        const donor = await createDonor(hospital._id);
+
+        const response = await request(app)
+            .patch(`/api/donor/${donor._id}`)
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({ ContactNumber: '9123456789' });
+
+        expect(response.status).toBe(200);
+        expect(response.body.donor.ContactNumber).toBe('9123456789');
+
+        const audits = await AuditLog.find({ Event: 'DONOR_UPDATED' }).lean();
+        expect(audits).toHaveLength(1);
+        expect(audits[0].TargetType).toBe('Donor');
+        expect(audits[0].Payload.updatedFields).toEqual(['ContactNumber']);
+    });
+
+    it('rejects updating verification, consent, status, or organ state through PATCH', async () => {
+        const adminToken = await createAdminAndToken();
+        const hospital = await createHospital(adminToken);
+        const donor = await createDonor(hospital._id);
+
+        const response = await request(app)
+            .patch(`/api/donor/${donor._id}`)
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({
+                IsVerified: false,
+                ConsentGiven: false,
+                Status: 'rejected',
+                OrgansDonated: [{ Organ: 'Kidney', Status: 'unavailable' }]
+            });
+
+        expect(response.status).toBe(400);
+        expect(response.body.message).toMatch(/cannot be updated/i);
+
+        // None of the protected fields actually changed.
+        const check = await request(app)
+            .get(`/api/donor/${donor._id}`)
+            .set('Authorization', `Bearer ${adminToken}`);
+        expect(check.body.donor.IsVerified).toBe(true);
+        expect(check.body.donor.ConsentGiven).toBe(true);
+        expect(check.body.donor.Status).toBe('available');
+    });
+
+    it('blocks a hospital user from updating a donor at another hospital', async () => {
+        const adminToken = await createAdminAndToken();
+        const hospitalA = await createHospital(adminToken);
+        const hospitalB = await createHospital(adminToken);
+        const hospitalAToken = await createHospitalUser(hospitalA._id);
+
+        const donor = await createDonor(hospitalB._id);
+
+        const response = await request(app)
+            .patch(`/api/donor/${donor._id}`)
+            .set('Authorization', `Bearer ${hospitalAToken}`)
+            .send({ ContactNumber: '9000000000' });
+
+        expect(response.status).toBe(403);
     });
 });

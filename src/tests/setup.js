@@ -45,10 +45,13 @@ async function closeTestDB() {
 // Call this between tests (in an `afterEach` block) so one test's data
 // doesn't leak into and affect the next test.
 async function clearTestDB() {
-    const collections = mongoose.connection.collections;
-    for (const key in collections) {
-        await collections[key].deleteMany({});
-    }
+    // Iterate own enumerable collection names and clear each one in parallel.
+    // `mongoose.connection.collections` is a plain object keyed by collection
+    // name; Object.keys gives us the names without the inherited prototype
+    // noise that `for...in` would otherwise pull in.
+    const { collections } = mongoose.connection;
+    const names = Object.keys(collections);
+    await Promise.all(names.map((name) => collections[name].deleteMany({})));
 }
 
 module.exports = { connectTestDB, closeTestDB, clearTestDB };

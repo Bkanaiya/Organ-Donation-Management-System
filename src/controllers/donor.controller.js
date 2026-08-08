@@ -21,7 +21,12 @@ async function getDonorById(req, res) {
 }
 
 async function updateDonor(req, res) {
-    const donor = await donorService.updateDonor(req.params.id, req.body);
+    const user = {
+        id: req.user.id || req.user._id,
+        Role: req.user.Role,
+        Hospital: req.user.Hospital
+    };
+    const donor = await donorService.updateDonor(req.params.id, req.body, user, req);
     res.status(200).json({ message: 'donor updated successfully', donor });
 }
 
